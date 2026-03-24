@@ -1,0 +1,16 @@
+{
+  "name": "devdoctor-cli",
+  "version": "1.0.0",
+  "description": "CLI para explicar erros de terminal com IA.",
+  "type": "module",
+  "bin": {
+    "devdoctor": "./bin/index.js"
+  },
+  "scripts": {
+    "start": "node ./bin/index.js"
+  },
+  "dependencies": {
+    "chalk": "^5.3.0",
+    "node-fetch": "^3.3.2"
+  }
+}
