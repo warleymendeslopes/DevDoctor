@@ -1,8 +1,10 @@
 # DevDoctor CLI
 
-CLI em Node.js para interceptar comandos de terminal, detectar erros e explicar de forma simples com IA.
+Ferramenta de linha de comando em Node.js que **executa seus comandos** (build, testes, scripts) e, quando algo dá errado, **explica o erro em linguagem simples** com IA — direto no terminal, sem copiar stack traces para o navegador.
 
-## Instalacao
+Útil para ganhar contexto rápido em falhas de build local, testes e ferramentas de desenvolvimento.
+
+## Instalação
 
 ```bash
 npm install
@@ -11,16 +13,15 @@ npm link
 
 ## Uso
 
-Execute qualquer comando usando o prefixo `devdoctor`:
+Prefixe qualquer comando com `devdoctor`:
 
 ```bash
 devdoctor npm run dev
 ```
 
-O comando original roda normalmente, com logs originais em `stdout` e `stderr`.
-Se um erro for detectado, o DevDoctor mostra uma explicacao no final.
+O programa roda como de costume; a saída original aparece em `stdout` e `stderr`. Se um erro for detectado, o DevDoctor mostra uma explicação no final.
 
-## Setup do provedor de IA
+## Configuração do provedor de IA
 
 ```bash
 devdoctor setup
@@ -28,17 +29,17 @@ devdoctor setup
 
 O assistente pergunta qual provedor usar:
 
-1. **OpenAI (GPT)** — API key comecando com `sk-` (digitacao oculta em terminal interativo)
-2. **Google Gemini** — API key do [Google AI Studio](https://aistudio.google.com/) (prefixo tipico `AIza`) e opcionalmente o nome do modelo
+1. **OpenAI (GPT)** — chave de API começando com `sk-` (digitação oculta no terminal interativo)
+2. **Google Gemini** — chave no [Google AI Studio](https://aistudio.google.com/) (prefixo típico `AIza`) e, opcionalmente, o nome do modelo
 3. **Ollama** — servidor local (URL base, ex.: `http://127.0.0.1:11434`) e nome do modelo (ex.: `llama3`)
 
-Tudo fica salvo em `~/.devdoctor/config.json`.
+A configuração fica em `~/.devdoctor/config.json`.
 
-### Variaveis de ambiente (opcional)
+### Variáveis de ambiente (opcional)
 
-Sobrescrevem valores do arquivo de config para o provedor ativo:
+Substituem valores do arquivo de configuração para o provedor ativo:
 
-| Provedor | Variaveis |
+| Provedor | Variáveis |
 |----------|-----------|
 | OpenAI | `OPENAI_API_KEY` |
 | Gemini | `GEMINI_API_KEY` ou `GOOGLE_API_KEY`, opcional `GEMINI_MODEL` |
@@ -46,10 +47,8 @@ Sobrescrevem valores do arquivo de config para o provedor ativo:
 
 ### Ollama
 
-Instale o [Ollama](https://ollama.com/), baixe um modelo (`ollama pull llama3`) e deixe o servidor acessivel na URL configurada (padrao `http://127.0.0.1:11434`).
+Instale o [Ollama](https://ollama.com/), baixe um modelo (`ollama pull llama3`) e mantenha o servidor acessível na URL configurada (padrão `http://127.0.0.1:11434`).
 
-## Migracao
+## Migração
 
-Se voce ja tinha apenas `openaiApiKey` no `config.json` sem `provider`, o DevDoctor assume **OpenAI** automaticamente.
-
-# DevDoctor
+Se você já tinha apenas `openaiApiKey` no `config.json` sem `provider`, o DevDoctor assume **OpenAI** automaticamente.

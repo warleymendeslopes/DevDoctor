@@ -1,7 +1,7 @@
 {
   "name": "devdoctor-cli",
   "version": "1.0.3",
-  "description": "CLI para explicar erros de terminal com IA.",
+  "description": "CLI que executa seus comandos e explica erros em linguagem simples com IA.",
   "type": "module",
   "bin": {
     "devdoctor": "./bin/index.js"
