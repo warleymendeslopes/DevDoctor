@@ -51,4 +51,5 @@ Instale o [Ollama](https://ollama.com/), baixe um modelo (`ollama pull llama3`) 
 ## Migracao
 
 Se voce ja tinha apenas `openaiApiKey` no `config.json` sem `provider`, o DevDoctor assume **OpenAI** automaticamente.
+
 # DevDoctor
