@@ -1,6 +1,6 @@
 {
   "name": "devdoctor-cli",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "description": "CLI para explicar erros de terminal com IA.",
   "type": "module",
   "bin": {
