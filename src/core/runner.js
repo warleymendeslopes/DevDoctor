@@ -2,6 +2,10 @@ import { spawn } from "node:child_process";
 import { hasError, extractErrorText } from "./parser.js";
 import { explainErrorWithAI } from "./ai.js";
 import { loadNormalizedConfig } from "../utils/config.js";
+import { sanitizeForAi, buildPreviewPayload } from "./privacy.js";
+import { loadProjectContext } from "./context.js";
+import { saveLastFailure } from "./lastFailure.js";
+import { confirmSendIfRequired } from "../utils/confirmSend.js";
 import {
   printAiExplanation,
   printAiError,
@@ -22,7 +26,32 @@ function buildErrorSignature(errorText) {
     .trim();
 }
 
-export async function runUserCommand(command, commandArgs = []) {
+/**
+ * @typedef {Object} RunOptions
+ * @property {boolean} [noAi]
+ * @property {boolean} [previewOnly]
+ * @property {boolean} [yesFlag]
+ */
+
+/**
+ * @param {string} command
+ * @param {string[]} commandArgs
+ * @param {RunOptions} [runOptions]
+ */
+export async function runUserCommand(command, commandArgs = [], runOptions = {}) {
+  const noAi = Boolean(runOptions.noAi);
+  const previewOnly = Boolean(runOptions.previewOnly);
+  const yesFlag = Boolean(runOptions.yesFlag);
+  /**
+   * Só analisa ao final do comando quando:
+   * - preview/no-ai (evita IA no meio do stream)
+   * - DEVDOCTOR_CONFIRM_SEND=1 (evita prompt de confirmacao no meio da saida)
+   */
+  const deferAnalysis =
+    previewOnly ||
+    noAi ||
+    process.env.DEVDOCTOR_CONFIRM_SEND === "1";
+
   return new Promise((resolve) => {
     const child = spawn(command, commandArgs, {
       shell: false,
@@ -31,22 +60,54 @@ export async function runUserCommand(command, commandArgs = []) {
 
     let outputBuffer = "";
 
-    const tryAnalyzeError = () => {
+    const tryAnalyzeError = async () => {
       if (isAnalyzing) return currentAnalysis;
       if (!hasError(outputBuffer)) return;
 
-      const errorText = extractErrorText(outputBuffer);
-      if (!errorText) return;
+      const errorRaw = extractErrorText(outputBuffer);
+      if (!errorRaw) return;
 
-      const signature = buildErrorSignature(errorText);
+      const errorSan = sanitizeForAi(errorRaw);
+      if (!errorSan) return;
+
+      const signature = buildErrorSignature(errorSan);
       if (!signature || signature === lastAnalyzedSignature) return;
 
       lastAnalyzedSignature = signature;
       isAnalyzing = true;
       currentAnalysis = (async () => {
+        let projectContext = "";
+        try {
+          projectContext = await loadProjectContext();
+        } catch {
+          projectContext = "";
+        }
+
+        if (previewOnly) {
+          console.log("");
+          console.log(buildPreviewPayload(errorSan, projectContext));
+          console.log(
+            "\n(Modo --preview: nada foi enviado ao provedor de IA. Remova --preview para enviar.)"
+          );
+          return;
+        }
+
+        if (noAi) {
+          console.log(
+            "\nDevDoctor: erro detectado; explicacao com IA desativada (--no-ai). Use `devdoctor explain` para analisar a ultima falha."
+          );
+          return;
+        }
+
+        const ok = await confirmSendIfRequired(yesFlag);
+        if (!ok) {
+          console.log("\nDevDoctor: envio para IA cancelado.");
+          return;
+        }
+
         startAiLoading();
         try {
-          const aiResult = await explainErrorWithAI(errorText);
+          const aiResult = await explainErrorWithAI(errorSan, { projectContext });
           printAiExplanation(aiResult);
         } catch (error) {
           const message = error?.message || String(error);
@@ -84,7 +145,7 @@ export async function runUserCommand(command, commandArgs = []) {
 
           if (suggestsOllamaLocal) {
             console.error(
-              'Dica: confira se o Ollama esta rodando (ex.: `ollama serve`) e se a URL em `devdoctor setup` esta correta.'
+              "Dica: confira se o Ollama esta rodando (ex.: `ollama serve`) e se a URL em `devdoctor setup` esta correta."
             );
           } else if (suggestsSetup) {
             console.error(
@@ -114,7 +175,9 @@ export async function runUserCommand(command, commandArgs = []) {
       }
 
       writer.write(text);
-      void tryAnalyzeError();
+      if (!deferAnalysis) {
+        void tryAnalyzeError();
+      }
     };
 
     child.stdout.on("data", (chunk) => {
@@ -128,6 +191,24 @@ export async function runUserCommand(command, commandArgs = []) {
     });
 
     child.on("close", async (code) => {
+      if (hasError(outputBuffer)) {
+        const errorRaw = extractErrorText(outputBuffer);
+        const errorSan = sanitizeForAi(errorRaw);
+        try {
+          const ctx = await loadProjectContext();
+          await saveLastFailure({
+            cwd: process.cwd(),
+            command,
+            commandArgs,
+            exitCode: code ?? 0,
+            errorTextSanitized: errorSan,
+            projectContextSnapshot: ctx
+          });
+        } catch (err) {
+          console.error(`DevDoctor: nao foi possivel salvar a ultima falha: ${err.message}`);
+        }
+      }
+
       await tryAnalyzeError();
       if (currentAnalysis) {
         await currentAnalysis;

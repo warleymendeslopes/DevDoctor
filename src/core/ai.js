@@ -13,7 +13,20 @@ function defaultResponse() {
   };
 }
 
-function buildPrompt(errorText) {
+/**
+ * @param {string} errorText
+ * @param {string} [projectContext]
+ * @param {{ isLocalModel?: boolean }} [opts]
+ */
+function buildPrompt(errorText, projectContext = "", opts = {}) {
+  const localHint = opts.isLocalModel
+    ? "\nInstrucao extra: seja breve (ate 6 linhas por secao). Priorize acoes concretas e comandos copiaveis."
+    : "";
+
+  const ctxBlock = projectContext.trim()
+    ? `\nContexto do projeto (pode ser incompleto):\n${projectContext.trim()}\n`
+    : "";
+
   return `
 Voce e um assistente que explica erros de terminal de forma simples.
 Responda somente em JSON valido, sem markdown, com este formato:
@@ -23,7 +36,8 @@ Responda somente em JSON valido, sem markdown, com este formato:
   "solution": "",
   "example": ""
 }
-
+${localHint}
+${ctxBlock}
 Erro capturado:
 ${errorText}
 `.trim();
@@ -73,7 +87,7 @@ function mapToResult(parsed) {
   };
 }
 
-async function explainOpenAI(cfg, errorText) {
+async function explainOpenAI(cfg, prompt) {
   if (!cfg.openaiApiKey) {
     throw new Error(
       'OpenAI API key nao encontrada. Defina OPENAI_API_KEY ou rode "devdoctor setup".'
@@ -91,7 +105,7 @@ async function explainOpenAI(cfg, errorText) {
       messages: [
         {
           role: "user",
-          content: buildPrompt(errorText)
+          content: prompt
         }
       ],
       temperature: 0.2
@@ -108,7 +122,7 @@ async function explainOpenAI(cfg, errorText) {
   return mapToResult(parseJsonFromContent(content));
 }
 
-async function explainGemini(cfg, errorText) {
+async function explainGemini(cfg, prompt) {
   if (!cfg.geminiApiKey) {
     throw new Error(
       'Gemini API key nao encontrada. Defina GEMINI_API_KEY (ou GOOGLE_API_KEY) ou rode "devdoctor setup".'
@@ -127,7 +141,7 @@ async function explainGemini(cfg, errorText) {
     body: JSON.stringify({
       contents: [
         {
-          parts: [{ text: buildPrompt(errorText) }]
+          parts: [{ text: prompt }]
         }
       ],
       generationConfig: {
@@ -146,7 +160,7 @@ async function explainGemini(cfg, errorText) {
   return mapToResult(parseJsonFromContent(content));
 }
 
-async function explainOllama(cfg, errorText) {
+async function explainOllama(cfg, prompt) {
   const base = cfg.ollamaBaseUrl.replace(/\/$/, "");
   const url = `${base}/api/chat`;
 
@@ -160,7 +174,7 @@ async function explainOllama(cfg, errorText) {
       messages: [
         {
           role: "user",
-          content: buildPrompt(errorText)
+          content: prompt
         }
       ],
       stream: false
@@ -177,16 +191,23 @@ async function explainOllama(cfg, errorText) {
   return mapToResult(parseJsonFromContent(content));
 }
 
-export async function explainErrorWithAI(errorText) {
+/**
+ * @param {string} errorText - texto ja sanitizado
+ * @param {{ projectContext?: string }} [options]
+ */
+export async function explainErrorWithAI(errorText, options = {}) {
+  const { projectContext = "" } = options;
   const cfg = await getResolvedAiConfig();
+  const isLocalModel = cfg.provider === "ollama";
+  const prompt = buildPrompt(errorText, projectContext, { isLocalModel });
 
   if (cfg.provider === "gemini") {
-    return explainGemini(cfg, errorText);
+    return explainGemini(cfg, prompt);
   }
 
   if (cfg.provider === "ollama") {
-    return explainOllama(cfg, errorText);
+    return explainOllama(cfg, prompt);
   }
 
-  return explainOpenAI(cfg, errorText);
+  return explainOpenAI(cfg, prompt);
 }

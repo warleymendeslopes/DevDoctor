@@ -1,54 +1,125 @@
 # DevDoctor CLI
 
-Ferramenta de linha de comando em Node.js que **executa seus comandos** (build, testes, scripts) e, quando algo dá errado, **explica o erro em linguagem simples** com IA — direto no terminal, sem copiar stack traces para o navegador.
+[![npm](https://img.shields.io/npm/v/devdoctor-cli.svg)](https://www.npmjs.com/package/devdoctor-cli)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](./LICENSE)
+[![Node](https://img.shields.io/node/v/devdoctor-cli)](https://nodejs.org/)
 
-Útil para ganhar contexto rápido em falhas de build local, testes e ferramentas de desenvolvimento.
+**DevDoctor** é um wrapper de linha de comando que **executa seus comandos** (build, testes, scripts) e, quando algo falha, **explica o erro em linguagem simples** com IA — sem copiar stack trace para o navegador.
+
+**Em uma frase:** ele não substitui um agente que edita seu repositório (tipo Cursor/Warp); ele **captura a falha do terminal**, opcionalmente **resume o contexto do projeto** e **pede uma explicação estruturada** ao provedor que você escolher (OpenAI, Gemini ou **Ollama local**).
+
+**English:** see [README.en.md](./README.en.md).
+
+## Por que usar
+
+- **Menos atrito mental:** saída original continua no `stdout`/`stderr`; a análise aparece ao final (ou depois, com `devdoctor explain`).
+- **Privacidade configurável:** sanitização básica antes do envio, modo `--preview` para ver o que seria enviado, confirmação opcional com `DEVDOCTOR_CONFIRM_SEND=1`.
+- **Custo sob controle:** use **Ollama** para não mandar nada para a nuvem; ou use APIs pagas quando quiser qualidade máxima.
 
 ## Instalação
 
+### Uso global (recomendado)
+
 ```bash
+npm install -g devdoctor-cli
+```
+
+### A partir do código
+
+```bash
+git clone https://github.com/warleymendeslopes/DevDoctor.git
+cd DevDoctor
 npm install
 npm link
 ```
 
-## Uso
+Requer **Node.js 18+**.
 
-Prefixe qualquer comando com `devdoctor`:
-
-```bash
-devdoctor npm run dev
-```
-
-O programa roda como de costume; a saída original aparece em `stdout` e `stderr`. Se um erro for detectado, o DevDoctor mostra uma explicação no final.
-
-## Configuração do provedor de IA
+## Quickstart
 
 ```bash
 devdoctor setup
+devdoctor npm run build
 ```
 
-O assistente pergunta qual provedor usar:
+Se houver erro reconhecido, o DevDoctor tenta explicar ao final. Para **ver o que seria enviado** sem chamar a API:
 
-1. **OpenAI (GPT)** — chave de API começando com `sk-` (digitação oculta no terminal interativo)
-2. **Google Gemini** — chave no [Google AI Studio](https://aistudio.google.com/) (prefixo típico `AIza`) e, opcionalmente, o nome do modelo
-3. **Ollama** — servidor local (URL base, ex.: `http://127.0.0.1:11434`) e nome do modelo (ex.: `llama3`)
+```bash
+devdoctor --preview npm test
+```
 
-A configuração fica em `~/.devdoctor/config.json`.
+Para **não chamar a IA** mas ainda **guardar a falha** (útil em comandos lentos):
 
-### Variáveis de ambiente (opcional)
+```bash
+devdoctor --no-ai npm run e2e
+devdoctor explain
+```
 
-Substituem valores do arquivo de configuração para o provedor ativo:
+## Comandos
 
-| Provedor | Variáveis |
-|----------|-----------|
-| OpenAI | `OPENAI_API_KEY` |
-| Gemini | `GEMINI_API_KEY` ou `GOOGLE_API_KEY`, opcional `GEMINI_MODEL` |
-| Ollama | `OLLAMA_BASE_URL`, `OLLAMA_MODEL` |
+| Comando | Descrição |
+|--------|-----------|
+| `devdoctor setup` | Configura OpenAI, Gemini ou Ollama (`~/.devdoctor/config.json`) |
+| `devdoctor <cmd>` | Executa o comando e analisa erros ao detectar falha |
+| `devdoctor explain` | Explica a **última falha salva** (sem rerodar o comando) |
 
-### Ollama
+### Flags globais (antes do comando)
 
-Instale o [Ollama](https://ollama.com/), baixe um modelo (`ollama pull llama3`) e mantenha o servidor acessível na URL configurada (padrão `http://127.0.0.1:11434`).
+| Flag | Efeito |
+|------|--------|
+| `--preview` | Imprime o texto **sanitizado** que seria enviado; **não** chama a IA |
+| `--no-ai` | Não chama a IA; ainda **salva** a falha para `explain` |
+| `--yes` / `-y` | Confirma envio quando `DEVDOCTOR_CONFIRM_SEND=1` |
 
-## Migração
+Separe o comando com `--` se precisar: `devdoctor --preview -- npm run build`.
 
-Se você já tinha apenas `openaiApiKey` no `config.json` sem `provider`, o DevDoctor assume **OpenAI** automaticamente.
+### Variáveis de ambiente
+
+| Variável | Efeito |
+|----------|--------|
+| `DEVDOCTOR_CONFIRM_SEND=1` | Pede confirmação antes de enviar ao provedor (use com `--yes` em CI) |
+| `OPENAI_API_KEY`, `GEMINI_API_KEY` / `GOOGLE_API_KEY`, `GEMINI_MODEL` | Sobrescrevem config (OpenAI / Gemini) |
+| `OLLAMA_BASE_URL`, `OLLAMA_MODEL` | Sobrescrevem config do Ollama |
+
+## Contexto do projeto (opcional)
+
+- É lido um **resumo** do `package.json` (nome, scripts, engines).
+- Opcional: crie **`.devdoctor/context.md`** na raiz do projeto (regras do time, gerenciador de pacotes, versão de Node, etc.). O conteúdo é truncado para limitar tokens.
+
+## Privacidade e segurança
+
+- O DevDoctor envia ao provedor **apenas o trecho de erro analisado**, depois de **sanitização heurística** (ex.: padrões de chaves API, Bearer, blocos PEM, trechos muito longos estilo base64).
+- **Isso não substitui revisão humana** em ambientes com dados sensíveis: use `--preview`, `--no-ai`, Ollama local ou políticas internas.
+- **Não coloque segredos em logs de build**; mesmo sanitizado, o ideal é não vazar.
+
+## Limitações
+
+- Depende da **qualidade do modelo** (modelos Ollama pequenos podem ser superficiais).
+- A detecção de erro é **heurística** (`parser.js`); casos exóticos podem não disparar análise.
+- Não inspeciona o repositório inteiro como uma IDE; contexto é **resumido** por design.
+- Pode adicionar **latência** ao final do comando quando a IA é chamada.
+
+## Comparação rápida
+
+| Fluxo | DevDoctor |
+|-------|-----------|
+| Copiar erro → colar no chat | Automatiza captura + formato + contexto mínimo |
+| Agente que edita arquivos | Fora de escopo; foco é **explicar** a falha |
+
+## Roadmap (ideias)
+
+- Mais testes de regressão para formatos de erro comuns (npm, jest, tsc, etc.).
+- Melhorias contínuas na sanitização e no preview.
+- Opcional: cache por assinatura de erro.
+
+## Contribuindo
+
+Issues e PRs são bem-vindos: [github.com/warleymendeslopes/DevDoctor/issues](https://github.com/warleymendeslopes/DevDoctor/issues).
+
+## Licença
+
+MIT — veja [LICENSE](./LICENSE).
+
+## Créditos
+
+Provedores: [OpenAI](https://openai.com/), [Google AI](https://ai.google.dev/), [Ollama](https://ollama.com/).

@@ -1,16 +1,54 @@
 {
   "name": "devdoctor-cli",
-  "version": "1.0.3",
-  "description": "CLI que executa seus comandos e explica erros em linguagem simples com IA.",
+  "version": "2.0.0",
+  "description": "CLI que executa comandos e explica falhas do terminal em linguagem simples com IA (OpenAI, Gemini ou Ollama local).",
   "type": "module",
+  "license": "MIT",
+  "author": "",
+  "keywords": [
+    "cli",
+    "terminal",
+    "developer-tools",
+    "error",
+    "errors",
+    "debugging",
+    "ai",
+    "openai",
+    "gemini",
+    "ollama",
+    "llm",
+    "dx",
+    "devdoctor"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/warleymendeslopes/DevDoctor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/warleymendeslopes/DevDoctor/issues"
+  },
+  "homepage": "https://github.com/warleymendeslopes/DevDoctor#readme",
+  "files": [
+    "bin",
+    "src",
+    "docs",
+    "LICENSE",
+    "README.md",
+    "README.en.md",
+    "CONTRIBUTING.md"
+  ],
   "bin": {
     "devdoctor": "./bin/index.js"
   },
   "scripts": {
-    "start": "node ./bin/index.js"
+    "start": "node ./bin/index.js",
+    "test": "node --test"
   },
   "dependencies": {
     "chalk": "^5.3.0",
     "node-fetch": "^3.3.2"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }
