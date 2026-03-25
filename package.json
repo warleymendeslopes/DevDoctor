@@ -1,6 +1,6 @@
 {
   "name": "devdoctor-cli",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "CLI que executa comandos e explica falhas do terminal em linguagem simples com IA (OpenAI, Gemini ou Ollama local).",
   "type": "module",
   "license": "MIT",
