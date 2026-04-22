@@ -87,6 +87,27 @@ function mapToResult(parsed) {
   };
 }
 
+function getModelLabel(cfg) {
+  if (cfg.provider === "gemini") {
+    return cfg.geminiModel;
+  }
+  if (cfg.provider === "ollama") {
+    return cfg.ollamaModel;
+  }
+  return "gpt-4o-mini";
+}
+
+export function parseHealthcheckResponse(content) {
+  const parsed = parseJsonFromContent(content);
+  if (!parsed || typeof parsed !== "object") {
+    return { ok: false, reason: "Resposta da IA nao veio em JSON valido." };
+  }
+  if (parsed.status !== "ok") {
+    return { ok: false, reason: 'Resposta da IA nao retornou {"status":"ok"}.' };
+  }
+  return { ok: true };
+}
+
 async function explainOpenAI(cfg, prompt) {
   if (!cfg.openaiApiKey) {
     throw new Error(
@@ -120,6 +141,40 @@ async function explainOpenAI(cfg, prompt) {
   const data = await response.json();
   const content = data?.choices?.[0]?.message?.content ?? "";
   return mapToResult(parseJsonFromContent(content));
+}
+
+async function requestOpenAIContent(cfg, prompt) {
+  if (!cfg.openaiApiKey) {
+    throw new Error(
+      'OpenAI API key nao encontrada. Defina OPENAI_API_KEY ou rode "devdoctor setup".'
+    );
+  }
+
+  const response = await fetchWithTimeout(OPENAI_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${cfg.openaiApiKey}`
+    },
+    body: JSON.stringify({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      temperature: 0.2
+    })
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(`Falha na API da OpenAI (${response.status}): ${responseText}`);
+  }
+
+  const data = await response.json();
+  return data?.choices?.[0]?.message?.content ?? "";
 }
 
 async function explainGemini(cfg, prompt) {
@@ -160,6 +215,43 @@ async function explainGemini(cfg, prompt) {
   return mapToResult(parseJsonFromContent(content));
 }
 
+async function requestGeminiContent(cfg, prompt) {
+  if (!cfg.geminiApiKey) {
+    throw new Error(
+      'Gemini API key nao encontrada. Defina GEMINI_API_KEY (ou GOOGLE_API_KEY) ou rode "devdoctor setup".'
+    );
+  }
+
+  const model = cfg.geminiModel;
+  const key = encodeURIComponent(cfg.geminiApiKey);
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${key}`;
+
+  const response = await fetchWithTimeout(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      contents: [
+        {
+          parts: [{ text: prompt }]
+        }
+      ],
+      generationConfig: {
+        temperature: 0.2
+      }
+    })
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(`Falha na API do Gemini (${response.status}): ${responseText}`);
+  }
+
+  const data = await response.json();
+  return data?.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
+}
+
 async function explainOllama(cfg, prompt) {
   const base = cfg.ollamaBaseUrl.replace(/\/$/, "");
   const url = `${base}/api/chat`;
@@ -191,6 +283,36 @@ async function explainOllama(cfg, prompt) {
   return mapToResult(parseJsonFromContent(content));
 }
 
+async function requestOllamaContent(cfg, prompt) {
+  const base = cfg.ollamaBaseUrl.replace(/\/$/, "");
+  const url = `${base}/api/chat`;
+
+  const response = await fetchWithTimeout(url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      model: cfg.ollamaModel,
+      messages: [
+        {
+          role: "user",
+          content: prompt
+        }
+      ],
+      stream: false
+    })
+  });
+
+  if (!response.ok) {
+    const responseText = await response.text();
+    throw new Error(`Falha no Ollama (${response.status}): ${responseText}`);
+  }
+
+  const data = await response.json();
+  return data?.message?.content ?? "";
+}
+
 /**
  * @param {string} errorText - texto ja sanitizado
  * @param {{ projectContext?: string }} [options]
@@ -210,4 +332,30 @@ export async function explainErrorWithAI(errorText, options = {}) {
   }
 
   return explainOpenAI(cfg, prompt);
+}
+
+export async function testAiConnection() {
+  const cfg = await getResolvedAiConfig();
+  const prompt =
+    'Responda somente em JSON valido e nada mais: {"status":"ok"}';
+
+  let content = "";
+  if (cfg.provider === "gemini") {
+    content = await requestGeminiContent(cfg, prompt);
+  } else if (cfg.provider === "ollama") {
+    content = await requestOllamaContent(cfg, prompt);
+  } else {
+    content = await requestOpenAIContent(cfg, prompt);
+  }
+
+  const validation = parseHealthcheckResponse(content);
+  if (!validation.ok) {
+    throw new Error(validation.reason);
+  }
+
+  return {
+    ok: true,
+    provider: cfg.provider,
+    model: getModelLabel(cfg)
+  };
 }

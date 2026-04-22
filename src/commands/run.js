@@ -2,10 +2,10 @@ import { runUserCommand } from "../core/runner.js";
 
 /**
  * @param {string[]} argv
- * @returns {{ flags: { noAi: boolean, previewOnly: boolean, yesFlag: boolean }, rest: string[] }}
+ * @returns {{ flags: { noAi: boolean, previewOnly: boolean, yesFlag: boolean, json: boolean }, rest: string[] }}
  */
 export function parseGlobalFlags(argv) {
-  const flags = { noAi: false, previewOnly: false, yesFlag: false };
+  const flags = { noAi: false, previewOnly: false, yesFlag: false, json: false };
   let i = 0;
   while (i < argv.length) {
     const a = argv[i];
@@ -21,6 +21,11 @@ export function parseGlobalFlags(argv) {
     }
     if (a === "--yes" || a === "-y") {
       flags.yesFlag = true;
+      i++;
+      continue;
+    }
+    if (a === "--json") {
+      flags.json = true;
       i++;
       continue;
     }
@@ -45,7 +50,7 @@ export async function runCommand(args) {
   const { flags, rest } = parseGlobalFlags(args);
   if (rest.length === 0) {
     console.error(
-      "Informe um comando para executar (ex.: devdoctor npm run build). Flags globais: --preview, --no-ai, --yes"
+      "Informe um comando para executar (ex.: devdoctor npm run build). Flags globais: --preview, --no-ai, --yes, --json"
     );
     process.exit(1);
   }

@@ -61,7 +61,12 @@ devdoctor explain
 |--------|-----------|
 | `devdoctor setup` | Configura OpenAI, Gemini ou Ollama (`~/.devdoctor/config.json`) |
 | `devdoctor <cmd>` | Executa o comando e analisa erros ao detectar falha |
-| `devdoctor explain` | Explica a **última falha salva** (sem rerodar o comando) |
+| `devdoctor explain [last\|id]` | Explica uma falha salva do histórico |
+| `devdoctor history` | Lista falhas recentes, com ID e origem da análise |
+| `devdoctor repeat <id>` | Reroda um comando salvo no histórico |
+| `devdoctor test` | Testa conexão com o provedor/modelo configurado e valida resposta da IA |
+| `devdoctor doctor` | Faz diagnóstico local do projeto e do provider configurado |
+| `devdoctor context` | Regenera o contexto automático em `.devdoctor/context.generated.md` |
 
 ### Flags globais (antes do comando)
 
@@ -70,6 +75,7 @@ devdoctor explain
 | `--preview` | Imprime o texto **sanitizado** que seria enviado; **não** chama a IA |
 | `--no-ai` | Não chama a IA; ainda **salva** a falha para `explain` |
 | `--yes` / `-y` | Confirma envio quando `DEVDOCTOR_CONFIRM_SEND=1` |
+| `--json` | Emite saída estruturada para CI, integrações e automações |
 
 Separe o comando com `--` se precisar: `devdoctor --preview -- npm run build`.
 
@@ -84,7 +90,18 @@ Separe o comando com `--` se precisar: `devdoctor --preview -- npm run build`.
 ## Contexto do projeto (opcional)
 
 - É lido um **resumo** do `package.json` (nome, scripts, engines).
-- Opcional: crie **`.devdoctor/context.md`** na raiz do projeto (regras do time, gerenciador de pacotes, versão de Node, etc.). O conteúdo é truncado para limitar tokens.
+- Opcional: crie **`.devdoctor/context.md`** na raiz do projeto (regras do time, gerenciador de pacotes, versão de Node, etc.).
+- Opcional: mantenha docs curtos em `docs/context/` (overview, arquitetura, comandos, testes e convenções).
+- Rode **`devdoctor context`** (ou `npm run context:build`) para gerar **`.devdoctor/context.generated.md`** automaticamente.
+- O DevDoctor compõe contexto na ordem: `package.json` resumido -> `.devdoctor/context.md` -> `.devdoctor/context.generated.md`.
+- Cada bloco e o total final são truncados para reduzir custo de tokens.
+
+## Funcionalidades novas de analise
+
+- **Hints determinísticos por stack conhecida:** casos como `npm ERESOLVE`, TypeScript, Jest, ESLint, Vite, Docker e `node-gyp` geram sugestões objetivas antes da IA.
+- **Histórico de falhas:** o DevDoctor mantém um histórico local em `~/.devdoctor/history.json`, além da última falha.
+- **Deduplicação por assinatura:** se o mesmo erro reaparecer no mesmo projeto, o CLI pode reutilizar uma análise anterior em vez de chamar a IA de novo.
+- **Modo doctor:** valida Node, `package.json`, `engines`, lockfile, `node_modules`, contexto do projeto e conectividade/configuração do provider.
 
 ## Privacidade e segurança
 

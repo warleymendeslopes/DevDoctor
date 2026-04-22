@@ -42,7 +42,8 @@
   },
   "scripts": {
     "start": "node ./bin/index.js",
-    "test": "node --test"
+    "test": "node --test",
+    "context:build": "node ./scripts/build-context.js"
   },
   "dependencies": {
     "chalk": "^5.3.0",

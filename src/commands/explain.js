@@ -1,20 +1,20 @@
-import { readLastFailure } from "../core/lastFailure.js";
-import { explainErrorWithAI } from "../core/ai.js";
+import { readFailureById, readLastFailure, saveFailureRecord } from "../core/lastFailure.js";
 import { buildPreviewPayload } from "../core/privacy.js";
 import { loadProjectContext } from "../core/context.js";
 import { confirmSendIfRequired } from "../utils/confirmSend.js";
+import { analyzeFailureRecord, inspectFailureRecord } from "../core/analyzer.js";
+import { printJson, buildCommandResultPayload } from "../core/output.js";
 import {
   printAiExplanation,
   printAiError,
+  printCachedAnalysis,
+  printDeterministicHints,
   startAiLoading,
   stopAiLoading
 } from "../core/formatter.js";
 
-/**
- * @param {string[]} argv
- */
 export function parseExplainFlags(argv) {
-  const flags = { noAi: false, previewOnly: false, yesFlag: false };
+  const flags = { noAi: false, previewOnly: false, yesFlag: false, json: false };
   const rest = [];
   for (const a of argv) {
     if (a === "--no-ai") {
@@ -29,6 +29,10 @@ export function parseExplainFlags(argv) {
       flags.yesFlag = true;
       continue;
     }
+    if (a === "--json") {
+      flags.json = true;
+      continue;
+    }
     if (a.startsWith("-")) {
       console.error(`Flag desconhecida: ${a}`);
       process.exit(1);
@@ -38,62 +42,177 @@ export function parseExplainFlags(argv) {
   return { flags, rest };
 }
 
-/**
- * Explica a ultima falha salva (comando `devdoctor explain`).
- * @param {string[]} argv argumentos apos `explain`
- * @returns {Promise<number>} codigo de saida
- */
+function isSpecialAlias(value) {
+  return value === "last" || value === undefined;
+}
+
+function printHumanAnalysis(analysis) {
+  if (!analysis || analysis.source === "none") {
+    return;
+  }
+
+  if (analysis.source === "known-hints") {
+    printDeterministicHints(analysis.deterministicHints || []);
+    return;
+  }
+
+  if (analysis.source === "cached") {
+    printCachedAnalysis(analysis.reusedFromId, analysis.summary);
+    if (analysis.aiResult) {
+      printAiExplanation(analysis.aiResult);
+    } else if (analysis.deterministicHints?.length) {
+      printDeterministicHints(analysis.deterministicHints);
+    }
+    return;
+  }
+
+  if (analysis.aiResult) {
+    printAiExplanation(analysis.aiResult);
+  }
+}
+
 export async function explainCommand(argv) {
   const { flags, rest } = parseExplainFlags(argv);
-  if (rest.length > 1 || (rest.length === 1 && rest[0] !== "last")) {
-    console.error("Uso: devdoctor explain [last] [--preview] [--no-ai] [--yes]");
+  if (rest.length > 1) {
+    console.error("Uso: devdoctor explain [last|<id>] [--preview] [--no-ai] [--yes] [--json]");
     process.exit(1);
   }
 
-  const last = await readLastFailure();
-  if (!last) {
+  const lookup = rest[0];
+  const record = isSpecialAlias(lookup)
+    ? await readLastFailure()
+    : await readFailureById(lookup);
+
+  if (!record) {
     console.error(
-      "Nenhuma falha salva. Rode um comando com devdoctor e reproduza um erro primeiro."
+      lookup && lookup !== "last"
+        ? `Falha ${lookup} nao encontrada no historico.`
+        : "Nenhuma falha salva. Rode um comando com devdoctor e reproduza um erro primeiro."
     );
     process.exit(1);
   }
 
-  const errorSan = last.errorTextSanitized;
-  let projectContext = last.projectContextSnapshot || "";
-  if (!projectContext && last.cwd) {
+  let projectContext = record.projectContextSnapshot || "";
+  if (!projectContext && record.cwd) {
     try {
-      projectContext = await loadProjectContext(last.cwd);
+      projectContext = await loadProjectContext(record.cwd);
+      record.projectContextSnapshot = projectContext;
     } catch {
       projectContext = "";
     }
   }
 
   if (flags.previewOnly) {
-    console.log(buildPreviewPayload(errorSan, projectContext));
-    console.log("\n(Modo --preview: nada foi enviado ao provedor de IA.)");
+    const preview = buildPreviewPayload(record.errorTextSanitized, projectContext);
+    if (flags.json) {
+      printJson(
+        buildCommandResultPayload({
+          ok: true,
+          mode: "explain",
+          command: record.command,
+          commandArgs: record.commandArgs,
+          exitCode: record.exitCode,
+          failure: record,
+          analysis: null,
+          meta: { preview }
+        })
+      );
+    } else {
+      console.log(preview);
+      console.log("\n(Modo --preview: nada foi enviado ao provedor de IA.)");
+    }
     return 0;
   }
 
   if (flags.noAi) {
-    console.log("Explicacao com IA desativada (--no-ai).");
+    const localAnalysis = record.analysis?.source !== "none"
+      ? record.analysis
+      : await inspectFailureRecord(record);
+    if (flags.json) {
+      printJson(
+        buildCommandResultPayload({
+          ok: true,
+          mode: "explain",
+          command: record.command,
+          commandArgs: record.commandArgs,
+          exitCode: record.exitCode,
+          failure: record,
+          analysis: localAnalysis
+        })
+      );
+    } else if (localAnalysis) {
+      printHumanAnalysis(localAnalysis);
+    } else {
+      console.log("Explicacao com IA desativada (--no-ai).");
+    }
     return 0;
   }
 
-  const ok = await confirmSendIfRequired(flags.yesFlag);
-  if (!ok) {
-    console.log("Envio para IA cancelado.");
-    return 1;
+  let analysis = record.analysis?.source !== "none" ? record.analysis : await inspectFailureRecord(record);
+  if (!analysis) {
+    const ok = await confirmSendIfRequired(flags.yesFlag);
+    if (!ok) {
+      if (flags.json) {
+        printJson(
+          buildCommandResultPayload({
+            ok: false,
+            mode: "explain",
+            command: record.command,
+            commandArgs: record.commandArgs,
+            exitCode: record.exitCode,
+            failure: record,
+            error: new Error("Envio para IA cancelado.")
+          })
+        );
+      } else {
+        console.log("Envio para IA cancelado.");
+      }
+      return 1;
+    }
+
+    startAiLoading();
+    try {
+      analysis = await analyzeFailureRecord(record, { useCache: true });
+    } catch (error) {
+      stopAiLoading();
+      if (flags.json) {
+        printJson(
+          buildCommandResultPayload({
+            ok: false,
+            mode: "explain",
+            command: record.command,
+            commandArgs: record.commandArgs,
+            exitCode: record.exitCode,
+            failure: record,
+            error
+          })
+        );
+      } else {
+        printAiError(error?.message || String(error));
+      }
+      return 1;
+    } finally {
+      stopAiLoading();
+    }
   }
 
-  startAiLoading();
-  try {
-    const aiResult = await explainErrorWithAI(errorSan, { projectContext });
-    printAiExplanation(aiResult);
-  } catch (error) {
-    printAiError(error?.message || String(error));
-    return 1;
-  } finally {
-    stopAiLoading();
+  record.analysis = analysis;
+  await saveFailureRecord(record);
+
+  if (flags.json) {
+    printJson(
+      buildCommandResultPayload({
+        ok: true,
+        mode: "explain",
+        command: record.command,
+        commandArgs: record.commandArgs,
+        exitCode: record.exitCode,
+        failure: record,
+        analysis
+      })
+    );
+  } else {
+    printHumanAnalysis(analysis);
   }
   return 0;
 }

@@ -56,13 +56,19 @@ devdoctor explain
 
 - `devdoctor setup` — configure OpenAI, Gemini, or Ollama (`~/.devdoctor/config.json`)
 - `devdoctor <command>` — run and analyze on failure
-- `devdoctor explain` — explain the **last saved** failure (no rerun)
+- `devdoctor explain [last|id]` — explain a saved failure from history
+- `devdoctor history` — list recent failures with IDs and analysis source
+- `devdoctor repeat <id>` — rerun a command saved in history
+- `devdoctor test` — test provider/model connectivity and validate an AI response
+- `devdoctor doctor` — run local environment and provider diagnostics
+- `devdoctor context` — regenerate automatic context in `.devdoctor/context.generated.md`
 
 ### Global flags (before the command)
 
 - `--preview` — print sanitized payload; **no** API call
 - `--no-ai` — do not call AI; still **persist** failure for `explain`
 - `--yes` / `-y` — auto-confirm when `DEVDOCTOR_CONFIRM_SEND=1`
+- `--json` — emit structured output for CI and integrations
 
 Use `--` to separate flags: `devdoctor --preview -- npm run build`.
 
@@ -75,7 +81,18 @@ Use `--` to separate flags: `devdoctor --preview -- npm run build`.
 ## Project context (optional)
 
 - A short summary of `package.json` is included when present.
-- Optional: `.devdoctor/context.md` in the project root (team conventions). Content is truncated.
+- Optional: `.devdoctor/context.md` in the project root (team conventions).
+- Optional: keep short docs in `docs/context/` (overview, architecture, commands, testing, conventions).
+- Run `devdoctor context` (or `npm run context:build`) to generate `.devdoctor/context.generated.md`.
+- Context is composed in order: summarized `package.json` -> `.devdoctor/context.md` -> `.devdoctor/context.generated.md`.
+- Blocks and final payload are truncated to keep token costs under control.
+
+## New analysis features
+
+- **Deterministic stack hints:** common cases such as `npm ERESOLVE`, TypeScript, Jest, ESLint, Vite, Docker, and `node-gyp` can be handled with direct suggestions before AI.
+- **Failure history:** DevDoctor now keeps a local history in `~/.devdoctor/history.json`, not only the last failure.
+- **Signature-based deduplication:** repeated errors in the same project can reuse a previous analysis instead of calling AI again.
+- **Doctor mode:** validates Node, `package.json`, `engines`, lockfiles, `node_modules`, context files, and provider connectivity/configuration.
 
 ## Privacy
 
