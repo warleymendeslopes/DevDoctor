@@ -3,6 +3,16 @@ import { join } from "node:path";
 
 const MAX_CONTEXT_CHARS = 4500;
 const CONTEXT_FILENAME = ".devdoctor/context.md";
+const GENERATED_CONTEXT_FILENAME = ".devdoctor/context.generated.md";
+const BLOCK_LIMIT_CHARS = 1800;
+
+function truncateBlock(text, limit = BLOCK_LIMIT_CHARS) {
+  const trimmed = (text || "").trim();
+  if (!trimmed) return "";
+  return trimmed.length > limit
+    ? `${trimmed.slice(0, limit)}\n... [truncado]`
+    : trimmed;
+}
 
 /**
  * Le package.json e extrai apenas campos seguros e uteis para o prompt.
@@ -37,11 +47,21 @@ async function readPackageJsonSummary(cwd) {
 async function readOptionalContextFile(cwd) {
   try {
     const raw = await fs.readFile(join(cwd, CONTEXT_FILENAME), "utf-8");
-    const trimmed = raw.trim();
-    if (!trimmed) return "";
-    return trimmed.length > 2000
-      ? `${trimmed.slice(0, 2000)}\n... [truncado]`
-      : trimmed;
+    return truncateBlock(raw);
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * Contexto gerado automaticamente por `devdoctor context`.
+ * @param {string} cwd
+ * @returns {Promise<string>}
+ */
+async function readGeneratedContextFile(cwd) {
+  try {
+    const raw = await fs.readFile(join(cwd, GENERATED_CONTEXT_FILENAME), "utf-8");
+    return truncateBlock(raw);
   } catch {
     return "";
   }
@@ -61,6 +81,10 @@ export async function loadProjectContext(cwd = process.cwd()) {
   const extra = await readOptionalContextFile(cwd);
   if (extra) {
     chunks.push("\nArquivo .devdoctor/context.md:\n" + extra);
+  }
+  const generated = await readGeneratedContextFile(cwd);
+  if (generated) {
+    chunks.push("\nArquivo .devdoctor/context.generated.md:\n" + generated);
   }
 
   const combined = chunks.join("\n\n").trim();

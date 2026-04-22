@@ -61,3 +61,74 @@ export function printAiExplanation(result) {
 export function printAiError(message) {
   console.error(chalk.red(`DevDoctor nao conseguiu analisar com IA: ${message}`));
 }
+
+export function printDeterministicHints(hints) {
+  console.log("");
+  console.log(chalk.cyan.bold("=== DevDoctor: Hints conhecidos ==="));
+  console.log("");
+
+  for (const hint of hints) {
+    console.log(chalk.yellow.bold(hint.title));
+    console.log(hint.summary);
+    if (hint.suggestions?.length) {
+      console.log("");
+      hint.suggestions.forEach((suggestion) => {
+        console.log(`- ${suggestion}`);
+      });
+    }
+    console.log("");
+  }
+}
+
+export function printCachedAnalysis(sourceId, summary) {
+  console.log("");
+  console.log(chalk.cyan.bold("=== DevDoctor: Erro ja visto ==="));
+  console.log("");
+  console.log(`Reutilizando analise anterior${sourceId ? ` (${sourceId})` : ""}.`);
+  if (summary) {
+    console.log("");
+    console.log(summary);
+    console.log("");
+  }
+}
+
+export function printHistory(records) {
+  if (!records.length) {
+    console.log("Nenhuma falha registrada.");
+    return;
+  }
+
+  console.log("");
+  console.log(chalk.cyan.bold("=== DevDoctor: Historico ==="));
+  console.log("");
+
+  for (const record of records) {
+    const firstLine = (record.signature || record.errorTextSanitized || "")
+      .split("\n")[0]
+      .slice(0, 100);
+    console.log(
+      `${record.id}  ${record.savedAt}  exit=${record.exitCode ?? "?"}  source=${record.analysis?.source || "none"}`
+    );
+    console.log(`  ${record.command} ${(record.commandArgs || []).join(" ")}`.trim());
+    if (firstLine) {
+      console.log(`  ${firstLine}`);
+    }
+    console.log("");
+  }
+}
+
+export function printDoctorResults(results) {
+  console.log("");
+  console.log(chalk.cyan.bold("=== DevDoctor: Doctor ==="));
+  console.log("");
+
+  for (const item of results) {
+    const color =
+      item.status === "ok" ? chalk.green : item.status === "warn" ? chalk.yellow : chalk.red;
+    console.log(`${color(item.status.toUpperCase())} ${item.checkId}: ${item.message}`);
+    if (item.suggestion) {
+      console.log(`  ${item.suggestion}`);
+    }
+  }
+  console.log("");
+}
